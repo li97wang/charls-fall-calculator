@@ -4,12 +4,11 @@ CHARLS 5-Year Fall-Risk Screening Calculator
 A web-based screening tool that returns an individual's predicted
 probability of a fall over ~5 years, using the penalized logistic-
 regression model developed on the China Health and Retirement
-Longitudinal Study (CHARLS), baseline 2015 -> outcome 2020.
+Longitudinal Study (CHARLS), baseline 2015 -> cumulative 2018/2020 intervals.
 
-The app wraps the *exact* fitted primary model and preprocessing
-pipeline reported in the manuscript (models/screen_LogReg.joblib +
-models/screen_preprocess.joblib). Faithfulness to the published
-predictions is checked by verify_calculator.py.
+The app wraps the corrected fitted pipeline reported after the 2026-07-21
+outcome audit. Faithfulness to the analysis artifact is checked by
+verify_calculator.py.
 
 RESEARCH / EDUCATIONAL TOOL — NOT a diagnostic device.
 ================================================================
@@ -22,35 +21,27 @@ import streamlit as st
 
 HERE = Path(__file__).resolve().parent
 MODEL_PATH = HERE / "models" / "screen_LogReg.joblib"
-PRE_PATH = HERE / "models" / "screen_preprocess.joblib"
 
 # --- model facts (from outputs/screen_model_metrics.csv & cleaning_report.md) ---
-DEV_N = 16263
-PREVALENCE = 0.180          # 5-yr fall prevalence in the analytic sample
-AUROC = 0.679
-AUROC_CI = (0.658, 0.700)
-BRIER = 0.139
-CALIB_SLOPE, CALIB_INT = 0.88, -0.03
-# risk-tier cutpoints = test-set P33 / P80 of predicted probability
-TIER_LOW, TIER_HIGH = 0.12, 0.25
-# faithful per-IPAQ-category MET imputation (training-sample category medians)
-IPAQ_MET = {0: 0.0, 1: 1732.5, 2: 8452.5}
+DEV_N = 16242
+PREVALENCE = 0.2977
+AUROC = 0.685
+AUROC_CI = (0.676, 0.694)
+BRIER = 0.188
+CALIB_SLOPE, CALIB_INT = 0.942, 0.001
+TIER_LOW, TIER_HIGH = 0.20, 0.40
 
 st.set_page_config(page_title="CHARLS Fall-Risk Screening Calculator",
                    page_icon="🦴", layout="wide")
 
-
 @st.cache_resource
 def load_model():
     model = joblib.load(MODEL_PATH)
-    pre = joblib.load(PRE_PATH)
-    features = list(pre["features"])
-    medians = pre["medians"]
-    miss_base = [f for f in features if f"{f}_miss" in features]
-    return model, features, medians, miss_base
+    features = list(model.feature_names_in_)
+    return model, features
 
 
-model, FEATURES, MEDIANS, MISS_BASE = load_model()
+model, FEATURES = load_model()
 
 
 def bmi_category(bmi):
@@ -65,27 +56,15 @@ def bmi_category(bmi):
 
 
 def assemble_row(inp: dict) -> pd.DataFrame:
-    """Map raw clinical inputs -> the 62-input model vector, replicating
-    code/12_screening_pipeline.py. Blank inputs are median-imputed and, where
-    the training pipeline carried a missingness indicator, that indicator is
-    set to 1 (informative missingness, exactly as the model was trained)."""
+    """Map raw inputs to the prespecified 32-feature vector.
+
+    Missing-value imputation, indicators and scaling are performed inside the
+    fitted sklearn pipeline, exactly as during model development.
+    """
     row = {f: np.nan for f in FEATURES}
     for k, v in inp.items():
         if k in row and v is not None and not (isinstance(v, float) and np.isnan(v)):
             row[k] = float(v)
-    # impute base features + set missingness indicators
-    for f in FEATURES:
-        if f.endswith("_miss"):
-            continue
-        if pd.isna(row[f]):
-            row[f] = float(MEDIANS[f])
-            if f in MISS_BASE:
-                row[f"{f}_miss"] = 1.0
-        elif f in MISS_BASE:
-            row[f"{f}_miss"] = 0.0
-    for f in FEATURES:
-        if f.endswith("_miss") and pd.isna(row[f]):
-            row[f] = 0.0
     return pd.DataFrame([row])[FEATURES]
 
 
@@ -113,7 +92,7 @@ st.title("CHARLS 5-Year Fall-Risk Screening Calculator")
 st.caption(
     "Estimates the probability of a self-reported fall over ~5 years in "
     "community-dwelling Chinese adults aged 45+, from the model developed on "
-    "CHARLS (baseline 2015 → outcome 2020).")
+    "CHARLS (baseline 2015 → cumulative 2018 and 2020 interval outcome).")
 
 st.warning(
     "**Research and educational use only — not a diagnostic device and not a "
@@ -126,12 +105,12 @@ with st.sidebar:
     st.header("Model card")
     st.markdown(
         f"""
-**Outcome** Any self-reported fall by the 2020 follow-up (~5-year horizon)
+**Outcome** Any self-reported fall in the 2015–2018 or 2018–2020 interval
 **Development cohort** CHARLS, N = {DEV_N:,} community-dwelling adults ≥45 y
-**Baseline fall prevalence** {PREVALENCE*100:.0f}%
-**Primary model** Penalised logistic regression (38 predictors, 62 inputs)
+**Cumulative fall prevalence** {PREVALENCE*100:.1f}%
+**Primary model** Logistic regression (32 prespecified predictors)
 
-**Held-out performance**
+**Internal validation (5-fold out-of-fold)**
 - AUROC {AUROC} (95% CI {AUROC_CI[0]}–{AUROC_CI[1]})
 - Brier score {BRIER}
 - Calibration slope {CALIB_SLOPE}, intercept {CALIB_INT}
@@ -142,8 +121,7 @@ population (Chinese, community-dwelling, ≥45 y).
 **Do not use** for individual diagnosis, for populations outside the
 development setting, or as the sole basis for any clinical decision.
 
-_Predictions reproduce the manuscript test set exactly_
-_(see `verify_calculator.py`)._
+_The bundled full-data pipeline is verified against the corrected analysis artifact._
 """)
     st.caption("Citation: [manuscript reference to be inserted on acceptance].")
 
@@ -179,14 +157,6 @@ with st.form("calc"):
                                 value=None, step=0.5, format="%.1f")
 
     with c2:
-        st.markdown("**Physical activity (IPAQ)**")
-        pa = st.selectbox("Weekly activity level",
-                          ["Low (< 600 MET-min/wk)",
-                           "Moderate (600–3000)",
-                           "High (> 3000)"])
-        pa_cat = {"Low (< 600 MET-min/wk)": 0, "Moderate (600–3000)": 1,
-                  "High (> 3000)": 2}[pa]
-
         st.markdown("**Functional status**")
         srh = st.selectbox("Self-rated health",
                            ["1 Excellent", "2 Very good", "3 Good",
@@ -239,7 +209,6 @@ if submitted:
         "r3agey": age, "female": 1.0 if sex_female else 0.0,
         "raeducl": edu_code, "married": married, "rural": rural,
         "grip_dom": grip, "r3mwaist": waist,
-        "pa_ipaq_cat_2015": pa_cat, "pa_met_total_2015": IPAQ_MET[pa_cat],
         "r3shlta": srh_code, "r3adla_c": adl, "r3iadla": iadl, "r3adlfive": adl5,
         "r3cesd10": cesd, "r3drinkev": drink, "r3smokev": smoke,
         "r3imrc": imrc, "r3dlrc": dlrc, "r3draw": draw_val,
@@ -274,9 +243,8 @@ if submitted:
                      "multifactorial falls assessment.", icon="🔴")
         st.caption(
             f"This estimate is about **{pct_pop:.1f}×** the average 5-year fall "
-            f"risk in the development cohort. At a {TIER_HIGH*100:.0f}% "
-            "screening cut-point the model flags ~20% of people with "
-            "sensitivity ≈ 0.39 and specificity ≈ 0.84 — useful for "
+            f"risk in the development cohort. The displayed risk bands are "
+            "descriptive and are not validated treatment thresholds — useful for "
             "prioritisation, not for diagnosis.")
 
     with st.expander("How to read this / limitations"):
@@ -291,12 +259,12 @@ if submitted:
   uncertainty.
 - **Scope.** Developed only in Chinese community-dwelling adults ≥45 y; not
   validated elsewhere or for clinical/inpatient populations.
-- **Missing inputs** are filled with the cohort median and flagged internally,
-  exactly as in model development; entering the muscle/anthropometric values
+- **Missing inputs** are handled by the fitted fold-safe preprocessing pipeline;
+  entering the muscle/anthropometric values
   (⭐) gives the most individualised estimate.
 """)
 
 st.divider()
-st.caption("Model: penalised logistic regression, CHARLS 2015→2020. "
-           "Predictions reproduce the manuscript held-out test set exactly. "
+st.caption("Model: logistic regression, CHARLS 2015→2020 cumulative outcome. "
+           "Performance is internally validated with out-of-fold predictions; no external validation. "
            "Source: papers/charls_falls_ml. © Research use only.")
