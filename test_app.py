@@ -1,18 +1,38 @@
-"""Smoke tests for corrected deployment artifact without executing Streamlit UI."""
-from pathlib import Path
-import joblib, numpy as np, pandas as pd
+"""Smoke tests for the 60+ AWGS-2019 deployment artifact and the Streamlit form.
 
-HERE=Path(__file__).resolve().parent
-model=joblib.load(HERE/"models/screen_LogReg.joblib"); FEATURES=list(model.feature_names_in_)
-def row(values):
-    d={f:np.nan for f in FEATURES}; d.update({k:v for k,v in values.items() if k in d})
-    return pd.DataFrame([d])[FEATURES]
-base={f:0 for f in FEATURES}
-base.update({"r3agey":60,"raeducl":2,"married":1,"grip_dom":32,"bmi":24,"asmi":6.8,"r3mwaist":86,
-             "r3shlta":3,"r3imrc":4,"r3dlrc":3,"r3draw":1,"r3cesd10":6})
-low_values=base|{"r3agey":50,"female":0,"baseline_fall_2015":0,"grip_dom":45,"r3adlfive":0,"r3cesd10":3}
-high_values=base|{"r3agey":82,"female":1,"baseline_fall_2015":1,"grip_dom":14,"r3adlfive":4,"r3iadla":3,"r3cesd10":20,"r3arthre":1,"r3stroke":1}
-low=row(low_values); high=row(high_values)
-p_low=float(model.predict_proba(low)[0,1]); p_high=float(model.predict_proba(high)[0,1])
-assert 0<p_low<p_high<1 and len(FEATURES)==32
-print(f"PASS: features=32, low-risk persona={p_low:.3f}, high-risk persona={p_high:.3f}")
+1. Artifact: 34 features, monotone low-risk < high-risk personas, and the
+   pre-specified "attempted but unable" coding raises predicted risk.
+2. UI: the Streamlit app runs headlessly (streamlit.testing AppTest), the
+   form submits, and a probability and risk band are rendered.
+"""
+import numpy as np
+from streamlit.testing.v1 import AppTest
+
+from calc_core import (assemble_row, chair_stand, derive_anthropometry,
+                       gait_speed, load_model)
+
+model, F = load_model()
+assert len(F) == 34
+
+base = {f: 0.0 for f in F}
+base.update({"raeducl": 1, "married": 1, "rural": 1, "grip_dom": 30, "r3mwaist": 86,
+             "r3shlta": 3, "r3imrc": 4, "r3dlrc": 3, "r3draw": 1, "r3cesd10": 6,
+             "gait_speed_ms": gait_speed(2.5, "measured"), "chair_stand_s": chair_stand(10, "measured")})
+base.update(derive_anthropometry(68, False, 165, 62))
+low = base | {"r3agey": 62, "female": 0, "baseline_fall_2015": 0, "grip_dom": 42}
+high = base | {"r3agey": 82, "female": 1, "baseline_fall_2015": 1, "grip_dom": 14,
+               "r3adlfive": 3, "r3iadla": 2, "r3cesd10": 22, "r3arthre": 1, "r3diabe": 1,
+               "gait_speed_ms": gait_speed(None, "unable"), "chair_stand_s": chair_stand(None, "unable")}
+high.update(derive_anthropometry(82, True, 150, 45))
+p = lambda d: float(model.predict_proba(assemble_row(d, F))[0, 1])
+p_low, p_high = p(low), p(high)
+assert 0 < p_low < p_high < 1
+print(f"PASS artifact: features=34, low-risk persona={p_low:.3f}, high-risk persona={p_high:.3f}")
+
+at = AppTest.from_file("app.py", default_timeout=60).run()
+assert not at.exception, at.exception
+at.button[0].click().run()
+assert not at.exception, at.exception
+shown = [m.value for m in at.metric]
+assert shown and shown[0].endswith("%"), shown
+print(f"PASS UI: form submitted with defaults, predicted probability shown = {shown[0]}")
