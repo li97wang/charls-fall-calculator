@@ -26,8 +26,8 @@ AUROC, AUROC_CI = 0.686, (0.662, 0.706)
 BRIER = 0.210
 CALIB_SLOPE, CALIB_SLOPE_CI, CALIB_INT = 0.84, (0.73, 0.96), -0.01
 # descriptive probability bands and observed fall frequency in the test set
-BANDS = [(0.20, "below 20%", 0.169), (0.30, "20% to below 30%", 0.291),
-         (0.40, "30% to below 40%", 0.331), (1.01, "40% or above", 0.549)]
+BANDS = [(0.20, "below 20%", 0.167), (0.30, "20% to below 30%", 0.297),
+         (0.40, "30% to below 40%", 0.322), (1.01, "40% or above", 0.552)]
 
 st.set_page_config(page_title="CHARLS Fall-Risk Research Calculator",
                    page_icon="🦴", layout="wide")
@@ -211,7 +211,7 @@ if submitted:
                      "multifactorial falls assessment.", icon="🔴")
         st.caption("The four bands are descriptive, not validated intervention "
                    "thresholds; the two middle bands were poorly separated in the "
-                   "test set (29.1% and 33.1%).")
+                   "test set (29.7% and 32.2%).")
 
     with st.expander("How to read this estimate"):
         st.markdown(
