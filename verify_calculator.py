@@ -5,11 +5,13 @@ Two checks, both must PASS before pushing:
      deployment model (models/awgs60_deploy_logreg.joblib) value by value on
      the full analytic sample (N=7,976; 2,965 events).
   2. Form-to-model parity: every participant's raw inputs (height, weight,
-     walk time, chair-stand time, "attempted but unable" flags ...) are pushed
-     through the same helper functions the web form uses (calc_core.py), and
-     the resulting predictions are compared with the model's predictions on the
-     analysis features. Residual differences come only from float32 storage of
-     anthropometry in the Stata file.
+     waist, interview items ...) are pushed through the same helper functions
+     the web form uses (calc_core.py), and the resulting predictions are
+     compared with the model's predictions on the analysis features. Residual
+     differences come only from float32 storage of anthropometry in the Stata file.
+
+2026-10-28: the final model has 30 predictors; the four physical-performance and
+muscle measures are no longer inputs (analysis_plan.md, 修改记录).
 
 Run with the analysis environment (scikit-learn 1.7.2), e.g. `py -3.10 verify_calculator.py`.
 """
@@ -20,8 +22,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
-from calc_core import (EXPECTED_FEATURES, assemble_row, chair_stand,
-                       derive_anthropometry, gait_speed, load_model)
+from calc_core import (EXPECTED_FEATURES, assemble_row, derive_anthropometry,
+                       load_model)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -56,30 +58,14 @@ def analytic_sample():
 def form_inputs(r):
     """What a user would type for participant r, mapped through calc_core."""
     val = lambda v: None if pd.isna(v) else float(v)
-    # walk / chair status as the form would record it
-    if r["r3walktryu"] == 1:
-        g = gait_speed(None, "unable")
-    elif pd.notna(r["gait_speed_ms"]):
-        g = gait_speed(2.5 / r["gait_speed_ms"], "measured")
-    else:
-        g = gait_speed(None, "not_measured")
-    if r["r3chr5tryu"] == 1:
-        c = chair_stand(None, "unable")
-    elif pd.notna(r["chair_stand_s"]):
-        c = chair_stand(r["chair_stand_s"], "measured")
-    else:
-        c = chair_stand(None, "not_measured")
-    inp = {k: val(r[k]) for k in EXPECTED_FEATURES
-           if k not in ("bmi", "asmi", "gait_speed_ms", "chair_stand_s")}
-    inp["gait_speed_ms"], inp["chair_stand_s"] = g, c
-    # anthropometry from raw height/weight; a derived value the cleaning step
-    # set to missing (implausible BMI or ASMI) is left blank, as a user would
+    inp = {k: val(r[k]) for k in EXPECTED_FEATURES if k != "bmi"}
+    # BMI from raw height/weight; a derived value the cleaning step set to
+    # missing (implausible BMI) is left blank, as a user would
     if pd.notna(r["r3mheight"]) and pd.notna(r["r3mweight"]):
         inp.update(derive_anthropometry(r["r3agey"], r["female"] == 1,
                                         float(r["r3mheight"]) * 100, float(r["r3mweight"])))
-        for k in ("bmi", "asmi"):
-            if pd.isna(r[k]):
-                inp.pop(k, None)
+        if pd.isna(r["bmi"]):
+            inp.pop("bmi", None)
     return inp
 
 
@@ -108,7 +94,7 @@ def main():
           f"mean|Δp|={d2.mean():.2e} over {len(d)} participants")
 
     print(f"Info: full-data apparent AUROC={roc_auc_score(y, p_dep):.4f} "
-          "(never report this; manuscript performance is the hold-out AUROC 0.686).")
+          "(never report this; manuscript performance is the hold-out AUROC in Table 2).")
     return 0
 
 

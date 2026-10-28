@@ -1,18 +1,24 @@
 # CHARLS 5-year fall-risk research calculator (adults aged 60+)
 
 Streamlit calculator for the logistic-regression model reported in the manuscript
-*Interpretable prediction of fall risk among Chinese community-dwelling older adults*
+*Key predictors of five-year fall risk in community-dwelling older Chinese adults:
+development and internal validation of a prediction model using CHARLS*
 (Zhang J, Wang H; under review). The model predicts any self-reported fall over
-2015–2020 from 34 predictors measured at the 2015 CHARLS baseline, including the
-complete AWGS-2019 construct: dominant-hand grip strength, appendicular skeletal
-muscle mass index (Wen equation), gait speed from the timed 2.5-metre walk, and
-five-repetition chair-stand time. Participants who attempted but could not complete
-a physical test are coded at pre-specified worst values (0 m/s; 120 s).
+2015–2020 from 30 predictors measured at the 2015 CHARLS baseline: interview items
+(fall history, demographics, function, self-rated health, cognition, depressive
+symptoms, health behaviours, 13 physician-diagnosed conditions) plus body mass index
+and waist circumference. Dominant-hand grip strength, appendicular skeletal muscle
+mass index, gait speed and five-repetition chair-stand time were evaluated as
+candidates; a pre-specified comparison showed no detectable increment, so they are
+not model inputs (2026-10-28).
+Height, weight and waist circumference are required form fields: leaving them blank would
+switch on missingness indicators that encode why measurements were missing in CHARLS
+(on average 1.8 percentage points lower predicted risk), not the user's own risk.
 
 Development data: 7,976 community-dwelling adults aged 60 years and older, 2,965
 fallers (37.17%). Performance comes from an untouched hold-out test set (n=2,393)
-of the development pipeline: AUROC 0.686 (95% CI 0.662–0.706), Brier score 0.210,
-calibration slope 0.84 (0.73–0.96), intercept −0.01. The bundled artifact
+of the development pipeline: AUROC 0.688 (95% CI 0.664–0.708), Brier score 0.210,
+calibration slope 0.86 (0.74–0.98), intercept −0.01. The bundled artifact
 `models/awgs60_deploy_logreg.joblib` is the deployment refit on all 7,976
 participants (median imputation with missingness indicators, scaling, logistic
 regression); its apparent full-data performance is never reported.
@@ -29,7 +35,7 @@ verification script can run the analysis data through the same code path.
 artifact and the analysis-directory model on N=7,976 with 2,965 events, and
 (2) form-to-model parity: each participant's raw inputs pushed through the form
 helpers reproduce the model's predictions (max |Δp| < 1e-4; float32 storage of
-anthropometry is the only source of difference). `test_app.py` checks persona
+height and weight is the only source of difference). `test_app.py` checks persona
 monotonicity and runs the Streamlit form headlessly.
 
 The calculator is for research and educational screening only. It has no external

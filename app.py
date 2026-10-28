@@ -2,9 +2,11 @@
 CHARLS 5-Year Fall-Risk Research Calculator (community-dwelling adults aged 60+)
 ================================================================
 Returns the predicted probability of any self-reported fall over 2015-2020,
-from the logistic-regression model with the complete AWGS-2019 construct
-(grip strength, muscle-mass index, gait speed, five-repetition chair stand)
-developed on the China Health and Retirement Longitudinal Study (CHARLS).
+from the 30-predictor logistic-regression model (interview items plus body mass
+index and waist circumference) developed on the China Health and Retirement
+Longitudinal Study (CHARLS). Grip strength, muscle mass, gait speed and
+chair-stand time were evaluated as candidates and added no detectable increment,
+so no physical-performance test is required (2026-10-28).
 
 The bundled pipeline is the deployment refit on all 7,976 participants
 (median imputation with missingness indicators, scaling, logistic regression).
@@ -15,19 +17,19 @@ RESEARCH / EDUCATIONAL TOOL - NOT a diagnostic device.
 """
 import streamlit as st
 
-from calc_core import assemble_row, chair_stand, derive_anthropometry, gait_speed, load_model
+from calc_core import assemble_row, derive_anthropometry, load_model
 
 # ---- model facts: hold-out test set of the development pipeline (manuscript Table 2) ----
 DEV_N = 7976
 EVENTS = 2965
 PREVALENCE = 0.3717
 TEST_N = 2393
-AUROC, AUROC_CI = 0.686, (0.662, 0.706)
+AUROC, AUROC_CI = 0.688, (0.664, 0.708)
 BRIER = 0.210
-CALIB_SLOPE, CALIB_SLOPE_CI, CALIB_INT = 0.84, (0.73, 0.96), -0.01
-# descriptive probability bands and observed fall frequency in the test set
-BANDS = [(0.20, "below 20%", 0.167), (0.30, "20% to below 30%", 0.297),
-         (0.40, "30% to below 40%", 0.322), (1.01, "40% or above", 0.552)]
+CALIB_SLOPE, CALIB_SLOPE_CI, CALIB_INT = 0.86, (0.74, 0.98), -0.01
+# descriptive probability bands and observed fall frequency in the test set (code/59, 2026-10-28)
+BANDS = [(0.20, "below 20%", 0.140), (0.30, "20% to below 30%", 0.294),
+         (0.40, "30% to below 40%", 0.314), (1.01, "40% or above", 0.563)]
 
 st.set_page_config(page_title="CHARLS Fall-Risk Research Calculator",
                    page_icon="🦴", layout="wide")
@@ -62,8 +64,10 @@ with st.sidebar:
 **Population** Community-dwelling adults aged ≥60 years, CHARLS 2015 baseline
 **Outcome** Any self-reported fall in 2015–2018 or 2018–2020
 **Development data** N = {DEV_N:,}; {EVENTS:,} fallers ({PREVALENCE*100:.1f}%)
-**Model** Logistic regression, 34 pre-specified predictors including the
-complete AWGS-2019 construct
+**Model** Logistic regression, 30 predictors (interview items plus body mass
+index and waist circumference). Grip strength, muscle mass, gait speed and
+chair-stand time were evaluated as candidates and added no detectable increment
+to discrimination, so no physical-performance test is required.
 
 **Hold-out test set** (n = {TEST_N:,}; 70/30 split stratified on outcome)
 - AUROC {AUROC} (95% CI {AUROC_CI[0]}–{AUROC_CI[1]})
@@ -81,9 +85,9 @@ outside the development setting, or as the sole basis for any intervention.
                "will be added on publication.")
 
 st.subheader("Enter baseline information")
-st.caption("Leave a field blank if the measurement is unavailable; it is then "
-           "handled by the model's missing-data rule. Entering the physical "
-           "measures gives the most individualised estimate.")
+st.caption("No physical-performance test is needed. Height, weight and waist "
+           "circumference are required. Other fields may be left blank if a value is "
+           "unavailable; they are then handled by the model's missing-data rule.")
 
 with st.form("calc"):
     c1, c2, c3 = st.columns(3)
@@ -102,32 +106,15 @@ with st.form("calc"):
         rural = 1.0 if st.radio("Residence", ["Rural", "Urban"],
                                 horizontal=True) == "Rural" else 0.0
 
-        st.markdown("**Anthropometry and muscle strength**")
+        st.markdown("**Anthropometry (required)**")
         height = st.number_input("Height (cm)", 120.0, 210.0, value=None,
-                                 step=0.5, format="%.1f")
+                                 step=0.5, format="%.1f", key="height")
         weight = st.number_input("Weight (kg)", 25.0, 180.0, value=None,
-                                 step=0.5, format="%.1f")
+                                 step=0.5, format="%.1f", key="weight")
         waist = st.number_input("Waist circumference (cm)", 40.0, 150.0,
-                                value=None, step=0.5, format="%.1f")
-        grip = st.number_input("Grip strength, dominant hand (kg)", 5.0, 90.0,
-                               value=None, step=0.5, format="%.1f",
-                               help="AWGS-2019 low grip strength: <28 kg in men, <18 kg in women.")
+                                value=None, step=0.5, format="%.1f", key="waist")
 
     with c2:
-        st.markdown("**Physical performance**")
-        gait_status = st.radio("Timed 2.5-metre walk",
-                               ["Measured", "Attempted but unable", "Not measured"],
-                               horizontal=True, index=2)
-        walk_time = st.number_input("Walk time for 2.5 m (seconds, average of two trials)",
-                                    1.25, 25.0, value=None, step=0.1, format="%.2f",
-                                    help="Gait speed = 2.5 / time. AWGS-2019 low gait speed: <1.0 m/s.")
-        chair_status = st.radio("Five repeated chair stands",
-                                ["Measured", "Attempted but unable", "Not measured"],
-                                horizontal=True, index=2)
-        chair_time = st.number_input("Time for five chair stands (seconds)",
-                                     3.0, 60.0, value=None, step=0.1, format="%.1f",
-                                     help="AWGS-2019 low physical performance: ≥12 s.")
-
         st.markdown("**Functional status**")
         srh = st.selectbox("Self-rated health",
                            ["1 Very good", "2 Good", "3 Fair", "4 Poor", "5 Very poor"],
@@ -172,15 +159,19 @@ with st.form("calc"):
     submitted = st.form_submit_button("Estimate fall risk", type="primary",
                                       use_container_width=True)
 
+# 2026-10-28: height, weight and waist are required. Leaving them blank would switch on the
+# missingness indicators, which encode why measurements were missing in CHARLS rather than the
+# user's risk (about 1.8 percentage points lower on average; scratch/blank_exam_shift_30var.py).
+if submitted and None in (height, weight, waist):
+    st.error("Please enter height, weight and waist circumference. These three "
+             "measurements are required; a scale and a tape measure are enough.")
+    st.stop()
+
 if submitted:
-    status = {"Measured": "measured", "Attempted but unable": "unable",
-              "Not measured": "not_measured"}
     inputs = {
         "r3agey": age, "female": 1.0 if sex_female else 0.0,
         "raeducl": edu_code, "married": married, "rural": rural,
-        "grip_dom": grip, "r3mwaist": waist,
-        "gait_speed_ms": gait_speed(walk_time, status[gait_status]),
-        "chair_stand_s": chair_stand(chair_time, status[chair_status]),
+        "r3mwaist": waist,
         "r3shlta": int(srh[0]), "r3iadla": iadl, "r3adlfive": adl5,
         "r3imrc": imrc, "r3dlrc": dlrc,
         "r3draw": {"Yes": 1.0, "No": 0.0, "Unknown": None}[draw],
@@ -211,7 +202,7 @@ if submitted:
                      "multifactorial falls assessment.", icon="🔴")
         st.caption("The four bands are descriptive, not validated intervention "
                    "thresholds; the two middle bands were poorly separated in the "
-                   "test set (29.7% and 32.2%).")
+                   "test set (29.4% and 31.4%).")
 
     with st.expander("How to read this estimate"):
         st.markdown(

@@ -14,14 +14,13 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 MODEL_PATH = HERE / "models" / "awgs60_deploy_logreg.joblib"
 
-# ---- fixed analysis constants (code/18_awgs60_final_holdout.py) ----
-COURSE_M = 2.5            # CHARLS timed walk course length (metres)
-GAIT_UNABLE = 0.0         # pre-specified worst value: attempted but unable to walk
-CHAIR_UNABLE = 120.0      # pre-specified worst value: attempted but unable to stand 5 times
-
+# 2026-10-28: final model = 30 predictors. The four physical-performance and muscle
+# measures (grip strength, ASMI, gait speed, chair-stand time) were evaluated in the
+# pre-specified comparison (code/68) and added no detectable increment, so they are
+# no longer model inputs (code/18_awgs60_final_holdout.py).
 EXPECTED_FEATURES = [
     "r3agey", "female", "raeducl", "married", "rural",
-    "grip_dom", "bmi", "asmi", "r3mwaist", "gait_speed_ms", "chair_stand_s",
+    "bmi", "r3mwaist",
     "r3shlta", "r3iadla", "r3adlfive",
     "r3imrc", "r3dlrc", "r3draw", "r3cesd10", "r3drinkev", "r3smokev",
     "baseline_fall_2015",
@@ -39,38 +38,17 @@ def load_model(path=MODEL_PATH):
 
 
 def derive_anthropometry(age, female, height_cm, weight_kg):
-    """BMI and appendicular skeletal muscle mass index (Wen et al. 2011),
-    replicating code/13_build_analytic_standard.py."""
+    """Body mass index from height and weight, replicating
+    code/13_build_analytic_standard.py (age and sex are kept in the signature
+    for call-site compatibility; the muscle-mass index is no longer a model input)."""
     if height_cm is None or weight_kg is None:
         return {}
     h_m = height_cm / 100.0
-    sex_n = 2 if female else 1                          # Wen 2011: male 1, female 2
-    asm = 0.193 * weight_kg + 0.107 * height_cm - 4.157 * sex_n - 0.037 * age - 2.631
-    return {"bmi": weight_kg / h_m ** 2, "asmi": asm / h_m ** 2}
-
-
-def gait_speed(walk_time_s, status):
-    """status: 'measured' | 'unable' | 'not_measured'. Time is the average
-    time in seconds for the 2.5-metre walk."""
-    if status == "unable":
-        return GAIT_UNABLE
-    if status == "measured" and walk_time_s:
-        return COURSE_M / walk_time_s
-    return None
-
-
-def chair_stand(seconds, status):
-    """status: 'measured' | 'unable' | 'not_measured'. Seconds for five
-    repeated chair stands."""
-    if status == "unable":
-        return CHAIR_UNABLE
-    if status == "measured" and seconds:
-        return float(seconds)
-    return None
+    return {"bmi": weight_kg / h_m ** 2}
 
 
 def assemble_row(inputs, features):
-    """Map named inputs to the 34-predictor vector; anything left as None
+    """Map named inputs to the 30-predictor vector; anything left as None
     becomes missing and is handled by the fitted median imputer with
     missingness indicators, exactly as in the deployment fit."""
     row = {f: np.nan for f in features}
