@@ -75,8 +75,9 @@ to discrimination, so no physical-performance test is required.
 - Calibration slope {CALIB_SLOPE} ({CALIB_SLOPE_CI[0]}–{CALIB_SLOPE_CI[1]}), intercept {CALIB_INT}
 
 The calculator runs the same model refitted on all {DEV_N:,} participants
-with median imputation and missingness indicators; the figures above come
-from the hold-out evaluation, not from this full-data refit.
+with median imputation and missingness indicators; every input is required, so
+the indicator terms are always zero. The figures above come from the hold-out
+evaluation, not from this full-data refit.
 
 **Do not use** for diagnosis, for people younger than 60, for populations
 outside the development setting, or as the sole basis for any intervention.
@@ -85,9 +86,10 @@ outside the development setting, or as the sole basis for any intervention.
                "will be added on publication.")
 
 st.subheader("Enter baseline information")
-st.caption("No physical-performance test is needed. Height, weight and waist "
-           "circumference are required. Other fields may be left blank if a value is "
-           "unavailable; they are then handled by the model's missing-data rule.")
+st.caption("No physical-performance test is needed. Every item is required: a blank "
+           "entry would be treated as missing in the same way as in CHARLS, which encodes "
+           "survey non-response rather than the person's own risk and can shift the "
+           "estimate by several percentage points.")
 
 with st.form("calc"):
     c1, c2, c3 = st.columns(3)
@@ -129,11 +131,13 @@ with st.form("calc"):
     with c3:
         st.markdown("**Mood, cognition and behaviours**")
         cesd = st.number_input("CES-D-10 depressive symptoms score (0–30)", 0, 30,
-                               value=None, step=1)
-        imrc = st.number_input("Immediate word recall (0–10)", 0, 10, value=None, step=1)
-        dlrc = st.number_input("Delayed word recall (0–10)", 0, 10, value=None, step=1)
-        draw = st.radio("Figure drawing correct", ["Yes", "No", "Unknown"],
-                        horizontal=True, index=2)
+                               value=None, step=1, key="cesd")
+        imrc = st.number_input("Immediate word recall (0–10)", 0, 10, value=None, step=1,
+                               key="imrc")
+        dlrc = st.number_input("Delayed word recall (0–10)", 0, 10, value=None, step=1,
+                               key="dlrc")
+        draw = st.radio("Figure drawing correct", ["Yes", "No"], horizontal=True,
+                        index=None, key="draw")
         drink = 1.0 if st.radio("Ever drunk alcohol", ["Yes", "No"],
                                 horizontal=True, index=1) == "Yes" else 0.0
         smoke = 1.0 if st.radio("Ever smoked", ["Yes", "No"],
@@ -159,12 +163,18 @@ with st.form("calc"):
     submitted = st.form_submit_button("Estimate fall risk", type="primary",
                                       use_container_width=True)
 
-# 2026-10-28: height, weight and waist are required. Leaving them blank would switch on the
-# missingness indicators, which encode why measurements were missing in CHARLS rather than the
-# user's risk (about 1.8 percentage points lower on average; scratch/blank_exam_shift_30var.py).
-if submitted and None in (height, weight, waist):
-    st.error("Please enter height, weight and waist circumference. These three "
-             "measurements are required; a scale and a tape measure are enough.")
+# 2026-10-28: every input is required. A blank would switch on the missingness indicator for
+# that item, which encodes non-response in CHARLS rather than the user's risk and shifts the
+# estimate by up to about 9 percentage points on average for the recall items
+# (code/73_s10_model_equations.py; Supplementary Table S10).
+required = {"height": height, "weight": weight, "waist circumference": waist,
+            "CES-D-10 score": cesd, "immediate word recall": imrc,
+            "delayed word recall": dlrc, "figure drawing": draw}
+missing = [name for name, value in required.items() if value is None]
+if submitted and missing:
+    st.error("Please complete every item before estimating. Missing: "
+             + ", ".join(missing) + ". A scale and a tape measure are enough for the "
+             "three measurements.")
     st.stop()
 
 if submitted:
@@ -174,7 +184,7 @@ if submitted:
         "r3mwaist": waist,
         "r3shlta": int(srh[0]), "r3iadla": iadl, "r3adlfive": adl5,
         "r3imrc": imrc, "r3dlrc": dlrc,
-        "r3draw": {"Yes": 1.0, "No": 0.0, "Unknown": None}[draw],
+        "r3draw": 1.0 if draw == "Yes" else 0.0,
         "r3cesd10": cesd, "r3drinkev": drink, "r3smokev": smoke,
         "baseline_fall_2015": prior_fall,
         **chronic_vals,

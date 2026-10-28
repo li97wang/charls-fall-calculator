@@ -1,11 +1,13 @@
 """Smoke tests for the 60+ deployment artifact and the Streamlit form.
 
 1. Artifact: 30 features and monotone low-risk < high-risk personas.
-2. UI: the Streamlit app runs headlessly (streamlit.testing AppTest), the
-   form submits, and a probability and risk band are rendered.
+2. UI: the Streamlit app runs headlessly (streamlit.testing AppTest), refuses an
+   incomplete form, and renders a probability and risk band once every item is given.
 
 2026-10-28: the four physical-performance and muscle measures are no longer
-model inputs (final model = 30 predictors).
+model inputs (final model = 30 predictors), and every input is required: a blank
+would switch on a missingness indicator estimated from CHARLS non-response
+(Supplementary Table S10 of the manuscript).
 """
 from streamlit.testing.v1 import AppTest
 
@@ -27,21 +29,44 @@ p_low, p_high = p(low), p(high)
 assert 0 < p_low < p_high < 1
 print(f"PASS artifact: features=30, low-risk persona={p_low:.3f}, high-risk persona={p_high:.3f}")
 
-# Blank anthropometry must be refused before any prediction is made.
-at = AppTest.from_file("app.py", default_timeout=60).run()
-assert not at.exception, at.exception
+
+def fresh():
+    at = AppTest.from_file("app.py", default_timeout=60).run()
+    assert not at.exception, at.exception
+    return at
+
+
+def fill_measurements(at):
+    at.number_input(key="height").set_value(160.0)
+    at.number_input(key="weight").set_value(60.0)
+    at.number_input(key="waist").set_value(85.0)
+
+
+# An empty form must be refused before any prediction is made.
+at = fresh()
 at.button[0].click().run()
 assert not at.exception, at.exception
 assert at.error and not at.metric, (at.error, at.metric)
-print("PASS UI: submitting without height, weight and waist shows an error and no estimate")
+print("PASS UI: submitting an empty form shows an error and no estimate")
 
-# With the three required measurements filled in, an estimate and a band are shown.
-at = AppTest.from_file("app.py", default_timeout=60).run()
-at.number_input(key="height").set_value(160.0)
-at.number_input(key="weight").set_value(60.0)
-at.number_input(key="waist").set_value(85.0)
+# Measurements alone are not enough: the interview items that can be empty are required too.
+at = fresh()
+fill_measurements(at)
+at.button[0].click().run()
+assert not at.exception, at.exception
+assert at.error and not at.metric, (at.error, at.metric)
+assert "CES-D-10" in at.error[0].value and "figure drawing" in at.error[0].value, at.error[0].value
+print("PASS UI: measurements without the recall, drawing and CES-D-10 items show an error and no estimate")
+
+# With every item given, an estimate and a band are shown.
+at = fresh()
+fill_measurements(at)
+at.number_input(key="cesd").set_value(6)
+at.number_input(key="imrc").set_value(4)
+at.number_input(key="dlrc").set_value(3)
+at.radio(key="draw").set_value("Yes")
 at.button[0].click().run()
 assert not at.exception, at.exception
 shown = [m.value for m in at.metric]
 assert shown and shown[0].endswith("%"), shown
-print(f"PASS UI: form submitted with required measurements, predicted probability shown = {shown[0]}")
+print(f"PASS UI: complete form submitted, predicted probability shown = {shown[0]}")

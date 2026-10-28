@@ -11,12 +11,13 @@ and waist circumference. Dominant-hand grip strength, appendicular skeletal musc
 mass index, gait speed and five-repetition chair-stand time were evaluated as
 candidates; a pre-specified comparison showed no detectable increment, so they are
 not model inputs (2026-10-28).
-Height, weight and waist circumference are required form fields: leaving them blank would
-switch on missingness indicators that encode why measurements were missing in CHARLS
-(on average 1.8 percentage points lower predicted risk), not the user's own risk.
+Every form field is required: leaving an item blank would switch on its missingness
+indicator, which encodes non-response in CHARLS rather than the user's own risk and
+shifts the estimate (for example, 9.4 percentage points lower on average when delayed
+word recall is blank; Supplementary Table S10 of the manuscript).
 
 Development data: 7,976 community-dwelling adults aged 60 years and older, 2,965
-fallers (37.17%). Performance comes from an untouched hold-out test set (n=2,393)
+fallers (37.17%). Performance comes from a hold-out test set reserved for evaluation (n=2,393)
 of the development pipeline: AUROC 0.688 (95% CI 0.664–0.708), Brier score 0.210,
 calibration slope 0.86 (0.74–0.98), intercept −0.01. The bundled artifact
 `models/awgs60_deploy_logreg.joblib` is the deployment refit on all 7,976
